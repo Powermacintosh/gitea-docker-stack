@@ -1,0 +1,138 @@
+services:
+  server:
+    image: custom-gitea:1.22.1
+    container_name: gitea
+    restart: always
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - ./data/gitea:/data             # для логов
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - DB_TYPE=postgres
+      - DB_HOST=${DB_HOST}:${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWD=${DB_PASS}
+      - GITEA__OTHER__SHOW_FOOTER_VERSION=false            # Показывать версию Gitea и Go в подвале.
+      - GITEA__OTHER__SHOW_FOOTER_TEMPLATE_LOAD_TIME=false # Показывать время выполнения шаблона в подвале.
+      - GITEA__OTHER__SHOW_FOOTER_POWERED_BY=true          # Показывать текст "powered by" в подвале.
+      - GITEA__OTHER__ENABLE_SITEMAP=false                 # Генерировать sitemap.
+      - GITEA__OTHER__ENABLE_FEED=false                    # Включить/Выключить RSS/Atom feed.
+      - GITEA__API__ENABLE_SWAGGER=false                   # Включить/Выключить API документацию.
+      - GITEA__SERVICE__DISABLE_REGISTRATION=false         # Включить/Выключить регистрацию.
+    depends_on:
+      - db
+    networks:
+      - gitea-custom
+
+  db:
+    image: postgres:17
+    container_name: db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - gitea-custom
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+  
+  gitea-runner:
+    image: docker.io/gitea/act_runner:nightly
+    container_name: gitea-runner
+    restart: always
+    depends_on:
+      - server
+    environment:
+      - CONFIG_FILE=/config.yaml
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${GITEA_RUNNER_TOKEN}
+      - GITEA_INSTANCE_URL=http://gitea:3000
+      - GITEA_RUNNER_NAME=admin-runner
+    volumes:
+      - ./configs/runner-config.yaml:/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/runners/admin-runner:/data
+    networks:
+      - gitea-custom
+  
+  # gitea-runner-2:
+  #   image: docker.io/gitea/act_runner:nightly
+  #   container_name: gitea-runner-2
+  #   restart: always
+  #   depends_on:
+  #     - server
+  #   environment:
+  #     - CONFIG_FILE=/config.yaml
+  #     - GITEA_RUNNER_REGISTRATION_TOKEN=${GITEA_RUNNER_TOKEN_2}
+  #     - GITEA_INSTANCE_URL=http://gitea:3000
+  #     - GITEA_RUNNER_NAME=runner-2
+  #   volumes:
+  #     - ./configs/runner-config.yaml:/config.yaml
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ./data/runners/gitea_runner_2:/data
+  #   networks:
+  #     - gitea
+  
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "${LOKI_PORT}"
+    networks:
+      - gitea-custom
+    volumes:
+      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command:
+      - -config.expand-env=true
+      - -config.file=/etc/loki/local-config.yaml
+    environment:
+      LOKI_PORT: ${LOKI_PORT}
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    networks:
+      - gitea-custom
+    volumes:
+      - ./configs/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command:
+      - -config.expand-env=true
+      - -config.file=/etc/promtail/config.yaml
+    environment:
+      LOKI_URL: http://loki:${LOKI_PORT}/loki/api/v1/push
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      - gitea-custom
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+volumes:
+  loki_data:
+  grafana_data:
+
+networks:
+  gitea-custom:
+    driver: bridge
