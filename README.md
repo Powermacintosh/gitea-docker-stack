@@ -9,6 +9,7 @@
   - Пример файла .env
   - Утилиту для обработки переводов
   - Папку с файлами для кастомизации Gitea
+  - Готовая тема для Gitea
 
 ## Требования
 
@@ -46,3 +47,5 @@ docker-compose up -d           # запуск в фоновом режиме
 
 docker network ls              # посмотреть сети
 ```
+
+<img src="gray_cat.svg" alt="Gray Cat" style="width:100%; height:auto;">

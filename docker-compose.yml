@@ -1,6 +1,6 @@
 services:
   server:
-    image: custom-gitea:1.22.1
+    image: custom-gitea:1.25.1
     container_name: gitea
     restart: always
     ports:
@@ -16,13 +16,33 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASSWD=${DB_PASS}
+
       - GITEA__OTHER__SHOW_FOOTER_VERSION=false            # Показывать версию Gitea и Go в подвале.
       - GITEA__OTHER__SHOW_FOOTER_TEMPLATE_LOAD_TIME=false # Показывать время выполнения шаблона в подвале.
-      - GITEA__OTHER__SHOW_FOOTER_POWERED_BY=true          # Показывать текст "powered by" в подвале.
+      - GITEA__OTHER__SHOW_FOOTER_POWERED_BY=false         # Показывать текст "powered by" в подвале.
       - GITEA__OTHER__ENABLE_SITEMAP=false                 # Генерировать sitemap.
       - GITEA__OTHER__ENABLE_FEED=false                    # Включить/Выключить RSS/Atom feed.
       - GITEA__API__ENABLE_SWAGGER=false                   # Включить/Выключить API документацию.
       - GITEA__SERVICE__DISABLE_REGISTRATION=false         # Включить/Выключить регистрацию.
+
+      - GITEA__MAILER__ENABLED=false                       # Включить/Выключить почту
+      - GITEA__MAILER__FROM=${SMTP_MAIL}
+      - GITEA__MAILER__PROTOCOL=smtps
+      - GITEA__MAILER__SMTP_ADDR=${SMTP_HOST}
+      - GITEA__MAILER__SMTP_PORT=${SMTP_PORT}
+      - GITEA__MAILER__USER=${SMTP_MAIL}
+      - GITEA__MAILER__PASSWD=${SMTP_PASS}
+
+      - GITEA__SERVICE__REGISTER_MANUAL_CONFIRM=true       # Включить/Выключить подтверждение новых регистраций
+
+      - GITEA__i18n__LANGS=${GITEA_LANGS}                  # Доступные переводы
+      - GITEA__i18n__NAMES=${GITEA_NAMES}                  # Титульные названия переводов
+
+      - GITEA__UI__DEFAULT_THEME=${GITEA_DEFAULT_THEME}    # Установка темы по умолчанию
+
+      # - GITEA__UI.META__AUTHOR=${GITEA_AUTHOR}
+      # - GITEA__UI.META__DESCRIPTION=${GITEA_DESCRIPTION}
+      # - GITEA__UI.META__KEYWORDS=${GITEA_KEYWORDS}
     depends_on:
       - db
     networks:

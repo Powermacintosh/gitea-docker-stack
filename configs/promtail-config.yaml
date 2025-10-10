@@ -17,7 +17,7 @@ scrape_configs:
         refresh_interval: 5s
         filters:
           - name: label
-            values: ["com.docker.compose.project=gitea"]
+            values: ["com.docker.compose.project=gitea-docker-stack"]
 
     relabel_configs:
       - source_labels: ["__meta_docker_container_name"]
