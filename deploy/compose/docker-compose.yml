@@ -1,0 +1,165 @@
+services:
+  gitea:
+    image: custom-gitea:1.25.2
+    container_name: gitea
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - ./data/gitea:/data # для логов
+      # - ./postgres/certs:/certs:ro
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - DB_TYPE=postgres
+      - DB_HOST=${DB_HOST}:${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWD=${DB_PASS}
+
+      # - GITEA__DATABASE__SSL_MODE=verify-full
+      # - GITEA__DATABASE__SSL_ROOT_CERT=/certs/ca.crt
+      - GITEA__OTHER__SHOW_FOOTER_VERSION=false # Показывать версию Gitea и Go в подвале.
+      - GITEA__OTHER__SHOW_FOOTER_TEMPLATE_LOAD_TIME=false # Показывать время выполнения шаблона в подвале.
+      - GITEA__OTHER__SHOW_FOOTER_POWERED_BY=false # Показывать текст "powered by" в подвале.
+      - GITEA__OTHER__ENABLE_SITEMAP=false # Генерировать sitemap.
+      - GITEA__OTHER__ENABLE_FEED=false # Включить/Выключить RSS/Atom feed.
+      - GITEA__API__ENABLE_SWAGGER=false # Включить/Выключить API документацию.
+      - GITEA__SERVICE__DISABLE_REGISTRATION=false # Включить/Выключить регистрацию.
+      - GITEA__MAILER__ENABLED=false # Включить/Выключить почту
+      - GITEA__MAILER__FROM=${SMTP_MAIL}
+      - GITEA__MAILER__PROTOCOL=smtps
+      - GITEA__MAILER__SMTP_ADDR=${SMTP_HOST}
+      - GITEA__MAILER__SMTP_PORT=${SMTP_PORT}
+      - GITEA__MAILER__USER=${SMTP_MAIL}
+      - GITEA__MAILER__PASSWD=${SMTP_PASS}
+
+      - GITEA__SERVICE__REGISTER_MANUAL_CONFIRM=true # Включить/Выключить подтверждение новых регистраций
+      - GITEA__SERVICE__REQUIRE_SIGNIN_VIEW=true # Включить/Выключить вход для просмотра страниц
+
+      - GITEA__i18n__LANGS=${GITEA_LANGS} # Доступные переводы
+      - GITEA__i18n__NAMES=${GITEA_NAMES} # Титульные названия переводов
+
+      - GITEA__UI__DEFAULT_THEME=${GITEA_DEFAULT_THEME} # Установка темы по умолчанию
+
+      # - GITEA__UI.META__AUTHOR=${GITEA_AUTHOR}
+      # - GITEA__UI.META__DESCRIPTION=${GITEA_DESCRIPTION}
+      # - GITEA__UI.META__KEYWORDS=${GITEA_KEYWORDS}
+    depends_on:
+      - db
+    networks:
+      - gitea-custom
+
+  db:
+    image: postgres:18
+    container_name: db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - ./postgres/data:/var/lib/postgresql
+      # - ./postgres/certs:/certs
+      # - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
+    # user: "999:999"
+    ports:
+      - "5432:5432"
+    networks:
+      - gitea-custom
+    # command: >
+    #   postgres -c ssl=on
+    #             -c ssl_cert_file=/certs/server.crt
+    #             -c ssl_key_file=/certs/server.key
+    #             -c ssl_ca_file=/certs/ca.crt
+    #             -c ssl_min_protocol_version=TLSv1.3
+    #             -c ssl_ciphers=HIGH:!aNULL:!eNULL:!EXPORT:!CAMELLIA:!DES:!MD5:!PSK:!RC4
+    #             -c listen_addresses='*'
+    #             -c hba_file=/etc/postgresql/pg_hba.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitea"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gitea-runner:
+    image: docker.io/gitea/act_runner:nightly
+    container_name: gitea-runner
+    restart: unless-stopped
+    depends_on:
+      - gitea
+    environment:
+      - CONFIG_FILE=/config.yaml
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${GITEA_RUNNER_TOKEN}
+      - GITEA_INSTANCE_URL=http://gitea:3000
+      - GITEA_RUNNER_NAME=admin-runner
+    volumes:
+      - ./configs/runner-config.yaml:/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/runners/admin-runner:/data
+    networks:
+      - gitea-custom
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    restart: unless-stopped
+    ports:
+      - "${LOKI_PORT}"
+    networks:
+      - gitea-custom
+    volumes:
+      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command:
+      - -config.expand-env=true
+      - -config.file=/etc/loki/local-config.yaml
+    environment:
+      LOKI_PORT: ${LOKI_PORT}
+    depends_on:
+      - gitea
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    restart: unless-stopped
+    networks:
+      - gitea-custom
+    volumes:
+      - ./configs/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command:
+      - -config.expand-env=true
+      - -config.file=/etc/promtail/config.yaml
+    environment:
+      LOKI_URL: http://loki:${LOKI_PORT}/loki/api/v1/push
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - gitea-custom
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - gitea
+
+volumes:
+  loki_data:
+  grafana_data:
+
+networks:
+  gitea-custom:
+    driver: bridge

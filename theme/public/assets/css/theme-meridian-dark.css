@@ -233,7 +233,7 @@
   --color-active: #2a2e41;
   --color-menu: #1f212b;
   --color-card: #1f212b;
-  --color-markup-table-row: #e2447180;
+  --color-markup-table-row: #21232d;
   --color-markup-code-block: #2a2e41;
   --color-markup-code-inline: #384c78b3;
   --color-milk-text: #abb1d3;
@@ -277,6 +277,11 @@ code {
   border-radius: var(--border-radius);
   background-color: unset;
   color: var(--color-milk-text);
+}
+code:not(.code-inner) {
+  padding: 1px 4px;
+  border-radius: var(--border-radius);
+  background-color: var(--color-expand-button);
 }
 .inline-code-block {
   padding: 2px 4px;

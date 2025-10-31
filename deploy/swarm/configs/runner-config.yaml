@@ -1,0 +1,21 @@
+log:
+  level: debug
+
+runner:
+  file: .runner
+  capacity: 1
+  envs: {}
+  envs_with_github: {}
+  extra_labels: []
+
+container:
+  network: gitea_gitea-custom # Название сети (<название директории>_<название сети>)
+  privileged: true
+  memory: 2G
+  memory_swap: 4G
+  memory_reservation: 1G
+  cpus: 1
+  security_opt:
+    - "seccomp=unconfined"
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock

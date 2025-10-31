@@ -1,20 +1,19 @@
-# Gitea Docker Stack
+# Gitea Docker Stack: Production-Grade Deployment with Zero Downtime
 
-- Пакет для быстрого запуска Gitea в Docker.
-- Содержит:
-  - Docker Compose файл для запуска Gitea
-  - Конфигурационный файл для раннера Gitea
-  - Конфигурационные файлы для сборки и отправки логов в Grafana
-  - Документацию для разработчиков
-  - Пример файла .env
-  - Утилиту для обработки переводов
-  - Папку с файлами для кастомизации Gitea
-  - Готовая тема для Gitea
+## Структура проекта
+
+- custom/ - кастомизация исходников
+- deploy/ - для продакшн-развертывания
+- docs/ - документация
+- local/ - для локальной разработки
+- locale-utils/ - для работы с локализацией исходников
+- theme/ - готовые темы для релиза
 
 ## Требования
 
 - Docker
 - Docker Compose
+- Docker Swarm
 
 ## Начало работы
 
@@ -28,17 +27,34 @@ cd gitea-docker-stack
 ### 2. Переменные окружения
 
 ```bash
-# Скопируйте файл .env.example в .env
-cp .env.example .env
-
-# Отредактируйте файл .env
+# Заполните файл .env
 vim .env
 ```
 
 - Первый запуск делается с пустой переменной `GITEA_RUNNER_TOKEN`.
 - Переменные окружения `GITEA_RUNNER_TOKEN` заполняете после регистрации раннера.
 
-### 3. Запуск через docker-compose
+### 3. Запуск docker-stack (для продакшн-развертывания)
+
+#### 3.1. Инициализация Swarm
+
+```sh
+docker swarm init
+```
+
+#### 3.2. Запуск
+
+```sh
+docker stack deploy -c docker-stack.yml gitea
+```
+
+#### 3.3. Скрипт для обновления без задержки
+
+```sh
+./update-gitea.sh
+```
+
+### 4. Запуск через docker-compose
 
 ```sh
 docker-compose up --build -d   # сборка и запуск в фоновом режиме
