@@ -17,6 +17,7 @@ scrape_configs:
         refresh_interval: 5s
         filters:
           - name: label
+            # values: ["com.docker.compose.project=gitea"]
             values: ["com.docker.stack.namespace=gitea"] # Название стека (Должно быть такое же, как название директории)
 
     relabel_configs:

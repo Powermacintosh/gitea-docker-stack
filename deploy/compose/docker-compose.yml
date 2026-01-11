@@ -1,14 +1,13 @@
 services:
   gitea:
-    image: custom-gitea:1.25.2
+    image: custom-gitea:1.25.6
     container_name: gitea
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "8080:3000"
       - "2222:22"
     volumes:
       - ./data/gitea:/data # для логов
-      # - ./postgres/certs:/certs:ro
     environment:
       - USER_UID=1000
       - USER_GID=1000
@@ -18,15 +17,18 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWD=${DB_PASS}
 
-      # - GITEA__DATABASE__SSL_MODE=verify-full
-      # - GITEA__DATABASE__SSL_ROOT_CERT=/certs/ca.crt
+      - GITEA__queue__TYPE=redis
+      - GITEA__queue__CONN_STR=redis://redis:6379/0
+      - GITEA__queue__QUEUE_NAME=_queue
+      - GITEA__queue__SET_NAME=_unique
+
       - GITEA__OTHER__SHOW_FOOTER_VERSION=false # Показывать версию Gitea и Go в подвале.
       - GITEA__OTHER__SHOW_FOOTER_TEMPLATE_LOAD_TIME=false # Показывать время выполнения шаблона в подвале.
       - GITEA__OTHER__SHOW_FOOTER_POWERED_BY=false # Показывать текст "powered by" в подвале.
       - GITEA__OTHER__ENABLE_SITEMAP=false # Генерировать sitemap.
       - GITEA__OTHER__ENABLE_FEED=false # Включить/Выключить RSS/Atom feed.
       - GITEA__API__ENABLE_SWAGGER=false # Включить/Выключить API документацию.
-      - GITEA__SERVICE__DISABLE_REGISTRATION=false # Включить/Выключить регистрацию.
+      - GITEA__SERVICE__DISABLE_REGISTRATION=true # Включить/Выключить регистрацию.
       - GITEA__MAILER__ENABLED=false # Включить/Выключить почту
       - GITEA__MAILER__FROM=${SMTP_MAIL}
       - GITEA__MAILER__PROTOCOL=smtps
@@ -51,6 +53,18 @@ services:
     networks:
       - gitea-custom
 
+  redis:
+    image: redis:8.2.2
+    networks:
+      - gitea-custom
+    volumes:
+      - redis_compose_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   db:
     image: postgres:18
     container_name: db
@@ -62,22 +76,10 @@ services:
       POSTGRES_INITDB_ARGS: "--data-checksums"
     volumes:
       - ./postgres/data:/var/lib/postgresql
-      # - ./postgres/certs:/certs
-      # - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
-    # user: "999:999"
     ports:
       - "5432:5432"
     networks:
       - gitea-custom
-    # command: >
-    #   postgres -c ssl=on
-    #             -c ssl_cert_file=/certs/server.crt
-    #             -c ssl_key_file=/certs/server.key
-    #             -c ssl_ca_file=/certs/ca.crt
-    #             -c ssl_min_protocol_version=TLSv1.3
-    #             -c ssl_ciphers=HIGH:!aNULL:!eNULL:!EXPORT:!CAMELLIA:!DES:!MD5:!PSK:!RC4
-    #             -c listen_addresses='*'
-    #             -c hba_file=/etc/postgresql/pg_hba.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gitea"]
       interval: 5s
@@ -159,6 +161,7 @@ services:
 volumes:
   loki_data:
   grafana_data:
+  redis_compose_data:
 
 networks:
   gitea-custom:
