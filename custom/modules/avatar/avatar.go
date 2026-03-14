@@ -11,37 +11,35 @@ import (
 	"image/color"
 	"image/png"
 
-	_ "image/gif"  // for image format registration
-	_ "image/jpeg" // for image format registration
+	_ "image/gif"  // for processing gif images
+	_ "image/jpeg" // for processing jpeg images
 
 	"code.gitea.io/gitea/modules/avatar/identicon"
 	"code.gitea.io/gitea/modules/setting"
 
 	"golang.org/x/image/draw"
 
-	_ "golang.org/x/image/webp" // for image format registration
+	_ "golang.org/x/image/webp" // for processing webp images
 )
 
 // DefaultAvatarSize is the target CSS pixel size for avatar generation. It is
+// multiplied by setting.Avatar.RenderedSizeFactor and the resulting size is the
 // usual size of avatar image saved on server, unless the original file is smaller
 // than the size after resizing.
 const DefaultAvatarSize = 256
 
-// RandomImageSize generates and returns a random avatar image unique to input data
+// RandomImageWithSize generates and returns a random avatar image unique to input data
 // in custom size (height and width).
-func RandomImageSize(size int, data []byte) (image.Image, error) {
-	// Use transparent background instead of white
-	imgMaker, err := identicon.New(size, color.Transparent, identicon.DarkColors...)
-	if err != nil {
-		return nil, fmt.Errorf("identicon.New: %w", err)
-	}
-	return imgMaker.Make(data), nil
+func RandomImageWithSize(size int, data []byte) image.Image {
+	// ИЗМЕНЕНО: используем color.Transparent вместо color.White для прозрачного фона
+	imgMaker := identicon.New(size, color.Transparent, identicon.DarkColors)
+	return imgMaker.Make(data)
 }
 
-// RandomImage generates and returns a random avatar image unique to input data
+// RandomImageDefaultSize generates and returns a random avatar image unique to input data
 // in default size (height and width).
-func RandomImage(data []byte) (image.Image, error) {
-	return RandomImageSize(DefaultAvatarSize*setting.Avatar.RenderedSizeFactor, data)
+func RandomImageDefaultSize(data []byte) image.Image {
+	return RandomImageWithSize(DefaultAvatarSize*setting.Avatar.RenderedSizeFactor, data)
 }
 
 // processAvatarImage process the avatar image data, crop and resize it if necessary.
@@ -65,14 +63,9 @@ func processAvatarImage(data []byte, maxOriginSize int64) ([]byte, error) {
 		return nil, fmt.Errorf("image height is too large: %d > %d", imgCfg.Height, setting.Avatar.MaxHeight)
 	}
 
-	// Check max origin size if specified (for animated images)
-	if maxOriginSize > 0 && len(data) < int(maxOriginSize) {
-		return data, nil
-	}
-
-	// If the origin is small enough (both dimensions <= target size), just use it
-	targetSize := DefaultAvatarSize * setting.Avatar.RenderedSizeFactor
-	if imgCfg.Width <= targetSize && imgCfg.Height <= targetSize {
+	// If the origin is small enough, just use it, then APNG could be supported,
+	// otherwise, if the image is processed later, APNG loses animation.
+	if len(data) < int(maxOriginSize) {
 		return data, nil
 	}
 
@@ -84,29 +77,25 @@ func processAvatarImage(data []byte, maxOriginSize int64) ([]byte, error) {
 	// try to crop and resize the origin image if necessary
 	img = cropSquare(img)
 
-	if setting.Avatar.RenderedSizeFactor > 0 {
-		targetSize = DefaultAvatarSize * setting.Avatar.RenderedSizeFactor
-	}
+	targetSize := DefaultAvatarSize * setting.Avatar.RenderedSizeFactor
 	img = scale(img, targetSize, targetSize, draw.BiLinear)
 
-	// Create a new RGBA image to preserve transparency
-	dst := image.NewRGBA(image.Rect(0, 0, img.Bounds().Dx(), img.Bounds().Dy()))
-	draw.Draw(dst, dst.Bounds(), image.Transparent, image.Point{}, draw.Src)
-	draw.Draw(dst, img.Bounds(), img, img.Bounds().Min, draw.Over)
-
-	// Encode the image to PNG with transparency
+	// try to encode the cropped/resized image to png
 	bs := bytes.Buffer{}
-	if err = png.Encode(&bs, dst); err != nil {
+	if err = png.Encode(&bs, img); err != nil {
 		return nil, err
 	}
 	resized := bs.Bytes()
 
-	// Always use the processed image to ensure transparency
+	// usually the png compression is not good enough, use the original image if the origin is smaller
+	if len(data) <= len(resized) {
+		return data, nil
+	}
+
 	return resized, nil
 }
 
 // ProcessAvatarImage process the avatar image data, crop and resize it if necessary.
-// the returned data could be the original image if no processing is needed.
 func ProcessAvatarImage(data []byte) ([]byte, error) {
 	return processAvatarImage(data, setting.Avatar.MaxOriginSize)
 }
@@ -114,13 +103,15 @@ func ProcessAvatarImage(data []byte) ([]byte, error) {
 // scale resizes the image to width x height using the given scaler.
 func scale(src image.Image, width, height int, scale draw.Scaler) image.Image {
 	rect := image.Rect(0, 0, width, height)
+	// Используем NewRGBA для корректной поддержки прозрачности
 	dst := image.NewRGBA(rect)
+	// Предварительно заполняем прозрачным цветом
+	draw.Draw(dst, rect, image.Transparent, image.Point{}, draw.Src)
 	scale.Scale(dst, rect, src, src.Bounds(), draw.Over, nil)
 	return dst
 }
 
 // cropSquare crops the largest square image from the center of the image.
-// If the image is already square, it is returned unchanged.
 func cropSquare(src image.Image) image.Image {
 	bounds := src.Bounds()
 	if bounds.Dx() == bounds.Dy() {
@@ -129,16 +120,15 @@ func cropSquare(src image.Image) image.Image {
 
 	var rect image.Rectangle
 	if bounds.Dx() > bounds.Dy() {
-		// width > height
 		size := bounds.Dy()
 		rect = image.Rect((bounds.Dx()-size)/2, 0, (bounds.Dx()+size)/2, size)
 	} else {
-		// width < height
 		size := bounds.Dx()
 		rect = image.Rect(0, (bounds.Dy()-size)/2, size, (bounds.Dy()+size)/2)
 	}
 
 	dst := image.NewRGBA(rect)
+	// Используем draw.Src для сохранения прозрачности при обрезке
 	draw.Draw(dst, rect, src, rect.Min, draw.Src)
 	return dst
 }
